@@ -1,0 +1,39 @@
+name: Deploy to jetty
+
+on:
+  workflow_call:
+    inputs:
+      file:
+        required: true
+        type: string
+      server:
+        required: true
+        type: string
+      instance:
+        required: true
+        type: string
+      context:
+        required: true
+        type: string
+      jdk:
+        type: number
+        default: 11
+      goals:
+        type: string
+        default: 'clean package'
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v1
+      - name: Set up JDK
+        uses: actions/setup-java@v2
+        with:
+          java-version: ${{ inputs.jdk }}
+          distribution: 'adopt'
+          overwrite-settings: false
+      - name: Build with Maven
+        run: mvn -B -P ${{ inputs.instance }} -Dmaven.test.skip ${{ inputs.goals }}
+      - name: Deploy to server
+        run: ~/deploy ${{ inputs.file }} ${{ inputs.server }} ${{ inputs.instance }} ${{ inputs.context }}.war

@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      branch:
+        type: string
+        default: 'master'
+      goals:
+        type: string
+        default: 'clean package'
+      jdk:
+        type: number
+        default: 11
+    secrets:
+      PACKAGES_TOKEN:
+        required: true
+        
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up JDK
+      uses: actions/setup-java@v1
+      with:
+        java-version: ${{ inputs.jdk }}
+    - name: Configure Maven
+      run: |
+        mkdir -p ~/.m2
+        echo "<settings>
+                <servers>
+                  <server><id>github</id><username>x-access-token</username><password>${{ secrets.GITHUB_TOKEN }}</password></server>
+                  <server><id>github-origin-legacy</id><username>x-access-token</username><password>${{ secrets.PACKAGES_TOKEN }}</password></server>
+                  <server><id>github-origin-gt-legacy</id><username>x-access-token</username><password>${{ secrets.PACKAGES_TOKEN }}</password></server>
+                </servers>
+              </settings>" > ~/.m2/settings.xml
+    - name: Cache maven dependencies
+      uses: actions/cache@v1
+      with:
+        path: ~/.m2/repository
+        key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-maven-
+    - name: Maven release
+      run: |
+        mvn --batch-mode versions:set -DnewVersion=${{ inputs.version }} -DprocessAllModules -DgenerateBackupPoms=false
+        mvn ${{ inputs.goals }}
+        mvn --batch-mode build-helper:parse-version versions:set -DnewVersion=\${parsedVersion.majorVersion}.\${parsedVersion.minorVersion}.\${parsedVersion.nextIncrementalVersion}-SNAPSHOT -DprocessAllModules -DgenerateBackupPoms=false
+    - name: Commit and push files
+      run: |
+        git switch -c ${{ inputs.branch }}
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git commit -m "New SNAPSHOT version" -a
+        git push origin ${{ inputs.branch }}
