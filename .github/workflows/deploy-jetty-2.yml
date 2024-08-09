@@ -24,9 +24,6 @@ on:
       goals:
         type: string
         default: 'clean package'
-      mavensettings:
-        type: string
-        default: ''
 
 jobs:
   deploy:
