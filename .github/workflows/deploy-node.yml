@@ -32,7 +32,7 @@ jobs:
       - name: Set up node
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ inputs.jdk }}
+          node-version: ${{ inputs.node-version }}
       - name: Build with Node
         run: ${{ inputs.goals }}
 
