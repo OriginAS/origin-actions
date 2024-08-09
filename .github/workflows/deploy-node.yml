@@ -1,5 +1,4 @@
-name: Deploy to jetty without private runner
-
+name: Deploy node application to varwww
 on:
   workflow_call:
     inputs:
