@@ -24,6 +24,9 @@ on:
       goals:
         type: string
         default: 'clean package'
+      mavenrepos:
+        type: string
+        default: ''
 
 jobs:
   deploy:
@@ -36,6 +39,15 @@ jobs:
           java-version: ${{ inputs.jdk }}
           distribution: 'adopt'
           overwrite-settings: false
+      - name: Configure Maven
+        run: |
+          mkdir -p ~/.m2
+          echo "<settings>
+                  <servers>
+                    <server><id>github</id><username>x-access-token</username><password>${{ secrets.GITHUB_TOKEN }}</password></server>
+                    ${{ inputs.mavenrepos }}
+                  </servers>
+                </settings>" > ~/.m2/settings.xml
       - name: Build with Maven
         run: mvn -B -P ${{ inputs.instance }} -Dmaven.test.skip ${{ inputs.goals }}
 
