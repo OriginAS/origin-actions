@@ -39,16 +39,6 @@ jobs:
           java-version: ${{ inputs.jdk }}
           distribution: 'adopt'
           overwrite-settings: false
-      - name: Configure Maven
-        run: |
-          mkdir -p ~/.m2
-          ENCRYPTED_SETTINGS_XML=${{ inputs.mavensettings }}
-          echo "B64: $ENCRYPTED_SETTINGS_XML"
-          BINARY_ENCRYPTED_SETTINGS_XML=$(echo -n "$ENCRYPTED_SETTINGS_XML" | base64 --decode);
-          SETTINGS_XML=$(echo -n "$BINARY_ENCRYPTED_SETTINGS_XML" | openssl enc -aes-256-cbc -pbkdf2 -d -salt -k "${{ secrets.ACTIONS_ENCRYPTION_PASSWORD }}");
-          echo "$SETTINGS_XML" > ~/.m2/settings.xml
-          echo "settings.xml:"
-          cat ~/.m2/settings.xml
       - name: Build with Maven
         run: mvn -B -P ${{ inputs.instance }} -Dmaven.test.skip ${{ inputs.goals }}
 
