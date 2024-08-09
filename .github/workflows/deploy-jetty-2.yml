@@ -65,7 +65,7 @@ jobs:
       - name: Revoke runner IP address
         run: |
           aws ec2 revoke-security-group-ingress \
-            --group-id sg-01057ecc644d94903 \
+            --group-id ${{ inputs.securitygroup }} \
             --protocol tcp \
             --port 22 \
             --cidr ${{ steps.ip.outputs.ipv4 }}/32
