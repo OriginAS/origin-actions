@@ -1,0 +1,69 @@
+name: Deploy to jetty without private runner
+
+on:
+  workflow_call:
+    inputs:
+      securitygroup:
+        required: true
+        type: string
+      file:
+        required: true
+        type: string
+      server:
+        required: true
+        type: string
+      instance:
+        required: true
+        type: string
+      context:
+        required: true
+        type: string
+      node-version:
+        type: string
+        default: '20.x'
+      goals:
+        type: string
+        default: 'clean package'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.jdk }}
+      - name: Build with Node
+        run: ${{ inputs.goals }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.ACTIONS_AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.ACTIONS_AWS_ACCESS_SECRET }}
+          aws-region: eu-north-1
+      - name: Get runner IP address
+        id: ip
+        uses: haythem/public-ip@v1.2
+      - name: Whitelist runner IP address
+        run: |
+          aws ec2 authorize-security-group-ingress \
+            --group-id ${{ inputs.securitygroup }} \
+            --protocol tcp \
+            --port 22 \
+            --cidr ${{ steps.ip.outputs.ipv4 }}/32
+
+      - name: Deploy to server
+        run: | 
+          echo "${{ secrets.ACTIONS_SSH_PRIVATE_KEY }}" > private_key && chmod 600 private_key
+          scp -o StrictHostKeyChecking=no -i private_key ${{ inputs.file }} actions@${{ inputs.server }}:work/${{ inputs.context }}.tar.gz || exit 1
+          ssh -o StrictHostKeyChecking=no -i private_key actions@${{ inputs.server }} "~/deploy-webapp work/${{ inputs.context }}.tar.gz ${{ inputs.instance }}" || exit 1
+
+      - name: Revoke runner IP address
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id ${{ inputs.securitygroup }} \
+            --protocol tcp \
+            --port 22 \
+            --cidr ${{ steps.ip.outputs.ipv4 }}/32
