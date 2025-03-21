@@ -38,7 +38,7 @@ jobs:
                 </servers>
               </settings>" > ~/.m2/settings.xml
     - name: Cache maven dependencies
-      uses: actions/cache@v1
+      uses: actions/cache@v4
       with:
         path: ~/.m2/repository
         key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
