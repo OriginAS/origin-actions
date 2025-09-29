@@ -6,7 +6,7 @@ on:
       securitygroup:
         required: true
         type: string
-      application:
+      application-archive:
         required: true
         type: string
       application-env:
@@ -59,15 +59,15 @@ jobs:
       - name: Deploy to server
         run: |
           echo "${{ secrets.ACTIONS_SSH_PRIVATE_KEY }}" > private_key && chmod 600 private_key
-          scp -o StrictHostKeyChecking=no -i private_key ${{ inputs.file }} actions@${{ inputs.server }}:work/${{ inputs.context }}.jar || exit 1
-          DEPLOY_ARGS="-n ${{ inputs.context }} -u ${{ inputs.owner }} -j work/${{ inputs.context }}.jar"
+          scp -o StrictHostKeyChecking=no -i private_key ${{ inputs.application-archive }} actions@${{ inputs.server }}:work/${{ inputs.context }}.zip || exit 1
+          DEPLOY_ARGS="-n ${{ inputs.context }} -a work/${{ inputs.context }}.zip"
           if [ -n "${{ inputs.application-env }}" ]; then
             scp -o StrictHostKeyChecking=no -i private_key ${{ inputs.application-env }} actions@${{ inputs.server }}:work/${{ inputs.context }}.yml || exit 1
-            DEPLOY_ARGS="$DEPLOY_ARGS -a work/${{ inputs.context }}.yml"
+            DEPLOY_ARGS="$DEPLOY_ARGS -e work/${{ inputs.context }}.yml"
           fi
           if [ -n "${{ inputs.application-vhost }}" ]; then
             scp -o StrictHostKeyChecking=no -i private_key ${{ inputs.application-vhost }} actions@${{ inputs.server }}:work/${{ inputs.context }}.conf || exit 1
-            DEPLOY_ARGS="$DEPLOY_ARGS -c work/${{ inputs.context }}.conf"
+            DEPLOY_ARGS="$DEPLOY_ARGS -v work/${{ inputs.context }}.conf"
           fi
           ssh -o StrictHostKeyChecking=no -i private_key actions@${{ inputs.server }} "~/deploy-craft-2025 $DEPLOY_ARGS" || exit 1
       - name: Revoke runner IP address

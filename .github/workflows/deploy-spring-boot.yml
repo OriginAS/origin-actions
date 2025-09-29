@@ -6,7 +6,7 @@ on:
       securitygroup:
         required: true
         type: string
-      application:
+      file:
         required: true
         type: string
       application-yml:
