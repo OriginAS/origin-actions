@@ -14,7 +14,7 @@ on:
         default: 'clean package'
       jdk:
         type: number
-        default: 11
+        default: 17
     secrets:
       PACKAGES_TOKEN:
         required: true
@@ -47,17 +47,17 @@ jobs:
       with:
         path: ~/.m2/repository
         key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-        restore-keys: |
-          ${{ runner.os }}-maven-
     - name: Maven release
       run: |
         mvn --batch-mode versions:set -DnewVersion=${{ inputs.version }} -DprocessAllModules -DgenerateBackupPoms=false
         mvn ${{ inputs.goals }}
         mvn --batch-mode build-helper:parse-version versions:set -DnewVersion=\${parsedVersion.majorVersion}.\${parsedVersion.minorVersion}.\${parsedVersion.nextIncrementalVersion}-SNAPSHOT -DprocessAllModules -DgenerateBackupPoms=false
-    - name: Commit and push files
+    - name: Create release with release notes
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        tag: ${{ github.ref_name }}
       run: |
-        git switch -c ${{ inputs.branch }}
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git commit -m "New SNAPSHOT version" -a
-        git push origin ${{ inputs.branch }}
+        gh release create "$tag" \
+            --repo="$GITHUB_REPOSITORY" \
+            --title="${tag#v}" \
+            --generate-notes
