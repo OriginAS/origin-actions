@@ -1,0 +1,88 @@
+name: Assign Dependabot PRs to the most active committers
+
+# Reusable workflow (OriginAS/origin-actions). Called from each repo's
+# .github/workflows/dependabot-assign.yml. No permissions block here: the
+# calling job sets them (contents: read, issues: write, pull-requests: write).
+
+on:
+  workflow_call:
+    inputs:
+      count:
+        description: How many people to pick.
+        type: number
+        default: 2
+      days:
+        description: Look at commits on the base branch from the last N days.
+        type: number
+        default: 90
+      fallback-days:
+        description: Wider window if nobody committed in the first one.
+        type: number
+        default: 365
+      mode:
+        description: "assign | review | both"
+        type: string
+        default: assign
+      exclude:
+        description: Comma-separated logins never to pick.
+        type: string
+        default: ""
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    steps:
+      # No checkout: only GitHub API calls, the PR's code is never run.
+      - name: Pick the most active committers and assign them
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+          COUNT: ${{ inputs.count }}
+          DAYS: ${{ inputs.days }}
+          FALLBACK_DAYS: ${{ inputs.fallback-days }}
+          MODE: ${{ inputs.mode }}
+          EXCLUDE: ${{ inputs.exclude }}
+        run: |
+          set -euo pipefail
+
+          # Top $COUNT human commit authors on $BASE since a date, as JSON array.
+          # Looks at the latest 100 commits in the window and skips bots and
+          # commits that only touch .github/ (CI/config housekeeping), so
+          # org-wide workflow PRs don't make one person "most active" everywhere.
+          pick() {
+            gh api "repos/$REPO/commits?sha=$BASE&since=$1&per_page=100" \
+              --jq '.[] | select(.author.login != null) | "\(.sha) \(.author.login)"' \
+            | while read -r sha login; do
+                case "$login" in *'[bot]'|dependabot|github-actions|copilot|web-flow) continue ;; esac
+                only_github=$(gh api "repos/$REPO/commits/$sha" \
+                  --jq '[.files[].filename] | all(startswith(".github/"))')
+                [ "$only_github" = true ] && continue
+                echo "$login"
+              done \
+            | { grep -vxF -f <(tr ',' '\n' <<<"$EXCLUDE" | sed '/^$/d') || true; } \
+            | sort | uniq -c | sort -rn | head -n "$COUNT" \
+            | awk '{print $2}' | jq -R . | jq -sc .
+          }
+
+          users=$(pick "$(date -u -d "-$DAYS days" +%Y-%m-%dT%H:%M:%SZ)")
+          if [ "$users" = "[]" ]; then
+            users=$(pick "$(date -u -d "-$FALLBACK_DAYS days" +%Y-%m-%dT%H:%M:%SZ)")
+          fi
+          if [ "$users" = "[]" ]; then
+            echo "No human commits on $BASE in the last $FALLBACK_DAYS days; leaving PR #$PR_NUMBER as is."
+            exit 0
+          fi
+          echo "Most active on $BASE: $users"
+
+          if [ "$MODE" = assign ] || [ "$MODE" = both ]; then
+            jq -n --argjson u "$users" '{assignees: $u}' \
+              | gh api -X POST "repos/$REPO/issues/$PR_NUMBER/assignees" --input - >/dev/null
+            echo "Assigned PR #$PR_NUMBER to $users"
+          fi
+          if [ "$MODE" = review ] || [ "$MODE" = both ]; then
+            jq -n --argjson u "$users" '{reviewers: $u}' \
+              | gh api -X POST "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" --input - >/dev/null \
+              || echo "::warning::Could not request review from $users (no repo access?)"
+          fi
