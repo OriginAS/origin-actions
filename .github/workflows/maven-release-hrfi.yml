@@ -27,9 +27,10 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Set up JDK
-      uses: actions/setup-java@v1
+      uses: actions/setup-java@v3
       with:
         java-version: ${{ inputs.jdk }}
+        distribution: corretto
     - name: Configure Maven
       run: |
         mkdir -p ~/.m2
