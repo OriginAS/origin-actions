@@ -49,15 +49,26 @@ jobs:
       - name: Build with Maven
         run: mvn -B -Dmaven.test.skip ${{ inputs.goals }}
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
+      - name: Check for GitHub OIDC token
+        id: oidc
+        run: echo "available=$([ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] && echo true || echo false)" >> $GITHUB_OUTPUT
+      - name: Configure AWS credentials (OIDC)
+        if: steps.oidc.outputs.available == 'true'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::835337142747:role/github-deploy
+          role-session-name: ${{ github.event.repository.name || 'github-actions' }}
+          aws-region: eu-north-1
+      - name: Configure AWS credentials (access key, deprecated)
+        if: steps.oidc.outputs.available != 'true'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           aws-access-key-id: ${{ secrets.ACTIONS_AWS_ACCESS_KEY }}
           aws-secret-access-key: ${{ secrets.ACTIONS_AWS_ACCESS_SECRET }}
           aws-region: eu-north-1
       - name: Get runner IP address
         id: ip
-        uses: haythem/public-ip@v1.2
+        run: echo "ipv4=$(curl -4 -s https://checkip.amazonaws.com)" >> $GITHUB_OUTPUT
       - name: Whitelist runner IP address
         run: |
           aws ec2 authorize-security-group-ingress \
@@ -73,7 +84,7 @@ jobs:
           ssh -o StrictHostKeyChecking=no -i private_key actions@${{ inputs.server }} "~/deploy-spring-boot work/${{ inputs.context }}.jar" || exit 1
 
       - name: Revoke runner IP address
-        if: always()
+        if: always() && steps.ip.outputs.ipv4 != ''
         run: |
           aws ec2 revoke-security-group-ingress \
             --group-id ${{ inputs.securitygroup }} \
