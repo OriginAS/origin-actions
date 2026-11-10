@@ -1,0 +1,106 @@
+name: CodeQL Analysis
+
+# Reusable CodeQL analysis (advanced setup). Callers decide the triggers,
+# typically push to the default branch, pull requests and a monthly schedule.
+#
+# Do not combine with CodeQL "default setup" on the same repository: GitHub
+# rejects advanced-setup uploads while default setup is enabled.
+
+on:
+  workflow_call:
+    inputs:
+      jdk:
+        description: >-
+          Java version the project builds with. Autobuild fails with
+          "release version NN not supported" if this is lower than the
+          project's release/target level.
+        type: number
+        default: 11
+      disable_kotlin:
+        description: >-
+          Skip Kotlin extraction. The Java/Kotlin extractor lags behind Kotlin
+          releases, and a too-new Kotlin fails the whole analysis
+          (KotlinVersionTooRecentError), so Java isn't scanned either. Set to
+          true only where that happens, and remove it again once CodeQL catches up.
+        type: boolean
+        default: false
+    secrets:
+      PACKAGES_TOKEN:
+        # Optional: only needed for projects that resolve packages from
+        # GitHub Packages. Dependabot-triggered runs get the Dependabot secret
+        # of the same name.
+        required: false
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    # Read by ~/.m2/settings.xml (${env.*}) in every Maven call, including
+    # autobuild, so the token values never end up in a command line.
+    env:
+      PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+      MAVEN_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5.7.0
+        with:
+          distribution: corretto
+          java-version: ${{ inputs.jdk }}
+          # Without a pom.xml, setup-java fails on `cache: maven`, and then
+          # nothing else (JS, Actions) gets scanned either.
+          cache: ${{ hashFiles('**/pom.xml') != '' && 'maven' || '' }}
+          overwrite-settings: false
+
+      - name: Configure Maven
+        if: hashFiles('**/pom.xml') != ''
+        # Fixed list of the GitHub Packages repository ids the OriginAS poms
+        # read from. Add an id here when a project starts reading a new one.
+        # `github` (a repository's own packages) gets GITHUB_TOKEN, the rest
+        # PACKAGES_TOKEN. Passwords are ${env.*} references, so the token
+        # values are not written to the file or a command line.
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'XML'
+          <settings>
+            <servers>
+              <server><id>github</id><username>x-access-token</username><password>${env.MAVEN_GITHUB_TOKEN}</password></server>
+              <server><id>github-origin</id><username>x-access-token</username><password>${env.PACKAGES_TOKEN}</password></server>
+              <server><id>github-origin-legacy</id><username>x-access-token</username><password>${env.PACKAGES_TOKEN}</password></server>
+              <server><id>github-origin-gt-legacy</id><username>x-access-token</username><password>${env.PACKAGES_TOKEN}</password></server>
+              <server><id>github-origin-jmagick-imageio</id><username>x-access-token</username><password>${env.PACKAGES_TOKEN}</password></server>
+              <server><id>github-origin-seamless-intercontext</id><username>x-access-token</username><password>${env.PACKAGES_TOKEN}</password></server>
+              <server><id>github-anleggsdeler-email</id><username>x-access-token</username><password>${env.PACKAGES_TOKEN}</password></server>
+              <server><id>github-hrfi-v2</id><username>x-access-token</username><password>${env.PACKAGES_TOKEN}</password></server>
+              <server><id>github-hrfi-ecvo</id><username>x-access-token</username><password>${env.PACKAGES_TOKEN}</password></server>
+              <server><id>github-hrfi-fagsystem</id><username>x-access-token</username><password>${env.PACKAGES_TOKEN}</password></server>
+              <server><id>github-nhs-fagsystem</id><username>x-access-token</username><password>${env.PACKAGES_TOKEN}</password></server>
+            </servers>
+          </settings>
+          XML
+
+      - name: Disable Kotlin extraction
+        if: inputs.disable_kotlin
+        run: echo "CODEQL_EXTRACTOR_JAVA_AGENT_DISABLE_KOTLIN=true" >> "$GITHUB_ENV"
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4.39.1
+        with:
+          queries: security-extended
+          # Autobuild runs before the JS extraction and copies webapp files to
+          # target/, so without this every JS finding is reported twice.
+          # Doesn't affect Java, which is analysed from the compilation.
+          config: |
+            paths-ignore:
+              - '**/target/**'
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v4.39.1
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4.39.1
