@@ -59,18 +59,39 @@ jobs:
 
       - name: Configure Maven
         if: hashFiles('**/pom.xml') != ''
-        # Same server ids as maven-build.yml.
+        # One <server> per repository id that the project's own poms point at
+        # maven.pkg.github.com, so no repository names are hardcoded here.
+        # Uses PACKAGES_TOKEN when the caller passes it, else GITHUB_TOKEN
+        # (enough for the repository's own packages). Passwords stay ${env.*}
+        # references; only the ids are printed.
         run: |
-          mkdir -p ~/.m2
-          cat > ~/.m2/settings.xml <<'XML'
-          <settings>
-            <servers>
-              <server><id>github</id><username>x-access-token</username><password>${env.MAVEN_GITHUB_TOKEN}</password></server>
-              <server><id>github-origin-legacy</id><username>x-access-token</username><password>${env.PACKAGES_TOKEN}</password></server>
-              <server><id>github-origin-gt-legacy</id><username>x-access-token</username><password>${env.PACKAGES_TOKEN}</password></server>
-            </servers>
-          </settings>
-          XML
+          python3 - <<'PY'
+          import os, pathlib, xml.etree.ElementTree as ET
+          ids = {"github"}
+          for pom in pathlib.Path(".").rglob("pom.xml"):
+              if {"target", "node_modules"} & set(pom.parts):
+                  continue
+              try:
+                  root = ET.parse(pom).getroot()
+              except ET.ParseError:
+                  continue
+              for el in root.iter():
+                  if el.tag.rsplit("}", 1)[-1] not in ("repository", "pluginRepository", "snapshotRepository"):
+                      continue
+                  kids = {c.tag.rsplit("}", 1)[-1]: (c.text or "").strip() for c in el}
+                  if "maven.pkg.github.com" in kids.get("url", "") and kids.get("id"):
+                      ids.add(kids["id"])
+          pw = "${env.PACKAGES_TOKEN}" if os.environ.get("PACKAGES_TOKEN") else "${env.MAVEN_GITHUB_TOKEN}"
+          servers = "".join(
+              f"<server><id>{i}</id><username>x-access-token</username><password>{pw}</password></server>"
+              for i in sorted(ids)
+          )
+          m2 = pathlib.Path.home() / ".m2"
+          m2.mkdir(parents=True, exist_ok=True)
+          (m2 / "settings.xml").write_text(f"<settings><servers>{servers}</servers></settings>\n")
+          print("Maven server ids:", ", ".join(sorted(ids)))
+          print("Credential:", "PACKAGES_TOKEN" if os.environ.get("PACKAGES_TOKEN") else "GITHUB_TOKEN")
+          PY
 
       - name: Disable Kotlin extraction
         if: inputs.disable_kotlin
