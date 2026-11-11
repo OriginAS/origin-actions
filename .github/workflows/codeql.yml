@@ -24,6 +24,14 @@ on:
           true only where that happens, and remove it again once CodeQL catches up.
         type: boolean
         default: false
+      build-command:
+        description: >-
+          Optional build command to run instead of CodeQL's autobuild, for
+          projects autobuild can't build on its own (for example Kotlin that is
+          compiled with an explicit `kotlin:compile` goal). CodeQL traces the
+          compilers this command runs. Leave empty to use autobuild.
+        type: string
+        default: ''
     secrets:
       PACKAGES_TOKEN:
         # Optional: only needed for projects that resolve packages from
@@ -100,7 +108,14 @@ jobs:
               - '**/target/**'
 
       - name: Autobuild
+        if: inputs.build-command == ''
         uses: github/codeql-action/autobuild@v4.39.1
+
+      - name: Build
+        if: inputs.build-command != ''
+        env:
+          BUILD_COMMAND: ${{ inputs.build-command }}
+        run: eval "$BUILD_COMMAND"
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4.39.1
