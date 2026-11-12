@@ -32,6 +32,14 @@ on:
           compilers this command runs. Leave empty to use autobuild.
         type: string
         default: ''
+      build-mode:
+        description: >-
+          Set to `none` to scan without building, for legacy projects that
+          can't be built on GitHub's runners (no root pom, unpublished or
+          unreachable dependencies). Java is then analysed from the source
+          only, with somewhat lower precision. Leave empty to build.
+        type: string
+        default: ''
     secrets:
       PACKAGES_TOKEN:
         # Optional: only needed for projects that resolve packages from
@@ -100,6 +108,7 @@ jobs:
         uses: github/codeql-action/init@v4.39.1
         with:
           queries: security-extended
+          build-mode: ${{ inputs.build-mode }}
           # Autobuild runs before the JS extraction and copies webapp files to
           # target/, so without this every JS finding is reported twice.
           # Doesn't affect Java, which is analysed from the compilation.
@@ -108,11 +117,11 @@ jobs:
               - '**/target/**'
 
       - name: Autobuild
-        if: inputs.build-command == ''
+        if: inputs.build-command == '' && inputs.build-mode != 'none'
         uses: github/codeql-action/autobuild@v4.39.1
 
       - name: Build
-        if: inputs.build-command != ''
+        if: inputs.build-command != '' && inputs.build-mode != 'none'
         env:
           BUILD_COMMAND: ${{ inputs.build-command }}
         run: eval "$BUILD_COMMAND"
