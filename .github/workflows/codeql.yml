@@ -115,9 +115,12 @@ jobs:
       - name: Write CodeQL config
         env:
           PATHS_IGNORE: ${{ inputs.paths-ignore }}
-        # The caller's paths come in through an environment variable, not
-        # interpolated into the script. Each line becomes a single-quoted YAML
-        # string, so a path can't inject other config keys.
+        # CodeQL only accepts a config file inside the checked-out workspace
+        # (not in the runner's temp directory), so it is written to the
+        # workspace root under an unlikely name. The caller's paths come in
+        # through an environment variable, not interpolated into the script.
+        # Each line becomes a single-quoted YAML string, so a path can't
+        # inject other config keys.
         run: |
           {
             echo "paths-ignore:"
@@ -131,14 +134,14 @@ jobs:
               [ -n "$path" ] || continue
               printf "  - '%s'\n" "${path//\'/\'\'}"
             done <<< "$PATHS_IGNORE"
-          } > "$RUNNER_TEMP/codeql-config.yml"
+          } > .origin-codeql-config.yml
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4.39.1
         with:
           queries: security-extended
           build-mode: ${{ inputs.build-mode }}
-          config-file: ${{ runner.temp }}/codeql-config.yml
+          config-file: ./.origin-codeql-config.yml
 
       - name: Autobuild
         if: inputs.build-command == '' && inputs.build-mode != 'none'
