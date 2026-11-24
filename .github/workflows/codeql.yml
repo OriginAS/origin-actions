@@ -61,10 +61,10 @@ jobs:
       PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
       MAVEN_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up JDK
-        uses: actions/setup-java@v5.7.0
+        uses: actions/setup-java@v6
         with:
           distribution: corretto
           java-version: ${{ inputs.jdk }}
@@ -105,7 +105,7 @@ jobs:
         run: echo "CODEQL_EXTRACTOR_JAVA_AGENT_DISABLE_KOTLIN=true" >> "$GITHUB_ENV"
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4.39.1
+        uses: github/codeql-action/init@v4.39.3
         with:
           queries: security-extended
           build-mode: ${{ inputs.build-mode }}
@@ -118,7 +118,7 @@ jobs:
 
       - name: Autobuild
         if: inputs.build-command == '' && inputs.build-mode != 'none'
-        uses: github/codeql-action/autobuild@v4.39.1
+        uses: github/codeql-action/autobuild@v4.39.3
 
       - name: Build
         if: inputs.build-command != '' && inputs.build-mode != 'none'
@@ -127,4 +127,4 @@ jobs:
         run: eval "$BUILD_COMMAND"
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4.39.1
+        uses: github/codeql-action/analyze@v4.39.3
