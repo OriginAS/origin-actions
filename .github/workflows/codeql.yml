@@ -40,6 +40,14 @@ on:
           only, with somewhat lower precision. Leave empty to build.
         type: string
         default: ''
+      paths-ignore:
+        description: >-
+          Optional extra paths CodeQL should not analyse, one glob per line
+          (for example `vendor/**` for a bundled third-party library, or a file
+          CodeQL can't parse). Added to the built-in `**/target/**`. Findings in
+          ignored files are not reported either. Leave empty to ignore nothing extra.
+        type: string
+        default: ''
     secrets:
       PACKAGES_TOKEN:
         # Optional: only needed for projects that resolve packages from
@@ -104,17 +112,33 @@ jobs:
         if: inputs.disable_kotlin
         run: echo "CODEQL_EXTRACTOR_JAVA_AGENT_DISABLE_KOTLIN=true" >> "$GITHUB_ENV"
 
+      - name: Write CodeQL config
+        env:
+          PATHS_IGNORE: ${{ inputs.paths-ignore }}
+        # The caller's paths come in through an environment variable, not
+        # interpolated into the script. Each line becomes a single-quoted YAML
+        # string, so a path can't inject other config keys.
+        run: |
+          {
+            echo "paths-ignore:"
+            # Autobuild runs before the JS extraction and copies webapp files to
+            # target/, so without this every JS finding is reported twice.
+            # Doesn't affect Java, which is analysed from the compilation.
+            echo "  - '**/target/**'"
+            while IFS= read -r path; do
+              path="${path#"${path%%[![:space:]]*}"}"   # trim leading whitespace
+              path="${path%"${path##*[![:space:]]}"}"   # trim trailing whitespace
+              [ -n "$path" ] || continue
+              printf "  - '%s'\n" "${path//\'/\'\'}"
+            done <<< "$PATHS_IGNORE"
+          } > "$RUNNER_TEMP/codeql-config.yml"
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4.39.1
         with:
           queries: security-extended
           build-mode: ${{ inputs.build-mode }}
-          # Autobuild runs before the JS extraction and copies webapp files to
-          # target/, so without this every JS finding is reported twice.
-          # Doesn't affect Java, which is analysed from the compilation.
-          config: |
-            paths-ignore:
-              - '**/target/**'
+          config-file: ${{ runner.temp }}/codeql-config.yml
 
       - name: Autobuild
         if: inputs.build-command == '' && inputs.build-mode != 'none'
